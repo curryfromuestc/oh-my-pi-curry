@@ -44,6 +44,30 @@ describe("workflow structured state and artifacts", () => {
 		).toThrow('workflow state value at "/review/body" exceeds the inline size limit');
 	});
 
+	it("keeps compact structured activation data and rejects oversized data", () => {
+		expect(
+			validateWorkflowActivationOutput(
+				{
+					summary: "review completed",
+					data: { verdict: "continue", score: 0.82 },
+				},
+				{ maxInlineValueBytes: 64 },
+			),
+		).toEqual({
+			summary: "review completed",
+			data: { verdict: "continue", score: 0.82 },
+		});
+
+		expect(() =>
+			validateWorkflowActivationOutput(
+				{
+					data: { body: "x".repeat(65) },
+				},
+				{ maxInlineValueBytes: 64 },
+			),
+		).toThrow('workflow activation output data at "/data" exceeds the inline size limit');
+	});
+
 	it("accepts compact artifact references and rejects raw transcript fields", () => {
 		expect(
 			validateWorkflowActivationOutput(

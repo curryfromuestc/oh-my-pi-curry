@@ -9,6 +9,7 @@ export interface WorkflowStatePatchOperation {
 
 export interface WorkflowActivationOutput {
 	summary?: string;
+	data?: Record<string, unknown>;
 	statePatch?: WorkflowStatePatchOperation[];
 	artifacts?: string[];
 }
@@ -64,6 +65,10 @@ export function validateWorkflowActivationOutput(
 		for (const reference of result.artifacts) {
 			assertArtifactReference(reference);
 		}
+	}
+	if (raw.data !== undefined) {
+		result.data = expectRecord(raw.data, "workflow activation output data");
+		assertInlineActivationData(result.data, policy);
 	}
 	if (raw.statePatch !== undefined) {
 		result.statePatch = expectStatePatch(raw.statePatch);
@@ -135,6 +140,13 @@ function assertInlineValue(pointer: string, value: unknown, policy: WorkflowStat
 	if (serialized === undefined) return;
 	if (new TextEncoder().encode(serialized).byteLength <= maxInlineValueBytes(policy)) return;
 	throw new WorkflowStateError(`workflow state value at "${pointer}" exceeds the inline size limit`);
+}
+
+function assertInlineActivationData(data: Record<string, unknown>, policy: WorkflowStateAccessPolicy): void {
+	const serialized = JSON.stringify(data);
+	if (serialized === undefined) return;
+	if (new TextEncoder().encode(serialized).byteLength <= maxInlineValueBytes(policy)) return;
+	throw new WorkflowStateError('workflow activation output data at "/data" exceeds the inline size limit');
 }
 
 function assertInlineText(label: string, value: string, maxBytes: number): void {

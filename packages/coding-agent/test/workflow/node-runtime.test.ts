@@ -135,6 +135,7 @@ describe("workflow node runtime adapters", () => {
 
 		expect(output).toEqual({
 			summary: "reviewed with reviewer",
+			data: { verdict: "continue" },
 			statePatch: [{ op: "set", path: "/verdict", value: "continue" }],
 		});
 	});

@@ -36,6 +36,27 @@ edges:
     when: state.verdict == "finish"
 `;
 
+const outputConditionalWorkflow = `
+name: output-conditional-demo
+version: 1
+nodes:
+  build:
+    type: agent
+  review:
+    type: review
+  finish:
+    type: script
+edges:
+  - from: build
+    to: review
+  - from: review
+    to: build
+    when: outputs.review.verdict == "continue"
+  - from: review
+    to: finish
+    when: outputs.review.verdict == "finish"
+`;
+
 const loopWorkflow = `
 name: loop-demo
 version: 1
@@ -124,6 +145,36 @@ describe("workflow activation scheduler", () => {
 
 		expect(result.activations.map(activation => activation.nodeId)).toEqual(["review", "build"]);
 		expect(result.state).toEqual({ verdict: "continue" });
+	});
+
+	it("evaluates outgoing edge conditions against the latest structured node outputs", async () => {
+		const definition = parseWorkflowDefinition(outputConditionalWorkflow, { sourcePath: "workflow.yml" });
+		let reviewCount = 0;
+
+		const result = await runWorkflowScheduler(definition, {
+			startNodeId: "build",
+			executeNode: async activation => {
+				if (activation.nodeId !== "review") {
+					return { summary: `ran ${activation.nodeId}` };
+				}
+				reviewCount += 1;
+				return {
+					summary: `review ${reviewCount}`,
+					data: { verdict: reviewCount === 1 ? "continue" : "finish" },
+				};
+			},
+		});
+
+		expect(result.activations.map(activation => activation.nodeId)).toEqual([
+			"build",
+			"review",
+			"build",
+			"review",
+			"finish",
+		]);
+		expect(result.activations.findLast(activation => activation.nodeId === "review")?.output?.data).toEqual({
+			verdict: "finish",
+		});
 	});
 
 	it("fails activations that write outside declared state scopes", async () => {

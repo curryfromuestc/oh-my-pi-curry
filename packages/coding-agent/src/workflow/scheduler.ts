@@ -35,6 +35,7 @@ export async function runWorkflowScheduler(
 	const state = options.initialState ?? {};
 	const activations: WorkflowActivation[] = [];
 	const completedByNode = new Map<string, WorkflowActivation[]>();
+	const outputsByNode: Record<string, unknown> = {};
 	const queuedJoinKeys = new Set<string>();
 	let nextActivationId = 1;
 	const createNextActivation = (nodeId: string, parentActivationIds: string[]): WorkflowActivation => ({
@@ -75,6 +76,11 @@ export async function runWorkflowScheduler(
 			if (activation.output.statePatch) {
 				applyWorkflowStatePatch(state, activation.output.statePatch, { allowedWritePaths: node.writes });
 			}
+			if (activation.output.data !== undefined) {
+				outputsByNode[activation.nodeId] = activation.output.data;
+			} else {
+				delete outputsByNode[activation.nodeId];
+			}
 			activation.status = "completed";
 			const completed = completedByNode.get(activation.nodeId) ?? [];
 			completed.push(activation);
@@ -85,7 +91,9 @@ export async function runWorkflowScheduler(
 			continue;
 		}
 		for (const edge of definition.edges.filter(edge => edge.from === activation.nodeId)) {
-			if (edge.condition && !evaluateWorkflowCondition(edge.condition.source, { state })) continue;
+			if (edge.condition && !evaluateWorkflowCondition(edge.condition.source, { state, outputs: outputsByNode })) {
+				continue;
+			}
 			const target = nodesById.get(edge.to);
 			if (target?.waitFor?.length) {
 				const parentActivationIds = collectJoinParentIds(target.waitFor, completedByNode);

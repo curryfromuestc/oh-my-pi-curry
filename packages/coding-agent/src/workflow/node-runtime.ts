@@ -141,9 +141,11 @@ async function executeReviewNode(
 			`workflow review node "${node.id}" returned undeclared verdict "${output.verdict}"`,
 		);
 	}
-	return {
+	const result: WorkflowActivationOutput = {
 		summary: output.summary,
-		artifacts: output.artifacts,
+		data: { verdict: output.verdict },
 		statePatch: [{ op: "set", path: "/verdict", value: output.verdict }],
 	};
+	if (output.artifacts !== undefined) result.artifacts = output.artifacts;
+	return result;
 }
