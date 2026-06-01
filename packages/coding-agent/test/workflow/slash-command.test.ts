@@ -3,9 +3,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "../../src/config/settings";
+import type { InteractiveModeContext } from "../../src/modes/types";
 import type { AgentSession } from "../../src/session/agent-session";
 import type { SessionManager } from "../../src/session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../src/slash-commands/acp-builtins";
+import { executeBuiltinSlashCommand } from "../../src/slash-commands/builtin-registry";
 import { parseWorkflowDefinition } from "../../src/workflow/definition";
 import type { WorkflowNodeRuntimeHost } from "../../src/workflow/node-runtime";
 import {
@@ -15,6 +17,7 @@ import {
 	startWorkflowRun,
 	type WorkflowRunStoreHost,
 } from "../../src/workflow/run-store";
+import type { WorkflowAgentTaskRunner } from "../../src/workflow/session-runtime";
 
 interface CapturedEntry {
 	type: "custom";
@@ -69,6 +72,38 @@ function createRuntime(entries: CapturedEntry[], workflowRuntimeHost?: WorkflowN
 			createWorkflowRuntimeHost: workflowRuntimeHost ? () => workflowRuntimeHost : undefined,
 			refreshCommands: () => {},
 			reloadPlugins: async () => {},
+		},
+	};
+}
+
+function createTuiRuntime(entries: CapturedEntry[], cwd: string, runner: WorkflowAgentTaskRunner) {
+	const output: string[] = [];
+	const session = {
+		getWorkflowAgentTaskRunner: () => runner,
+	} as unknown as AgentSession;
+	const sessionManager = {
+		appendCustomEntry: (customType: string, data?: unknown) => {
+			entries.push({ type: "custom", customType, data });
+			return `entry-${entries.length}`;
+		},
+		getBranch: () => entries,
+		getCwd: () => cwd,
+	} as unknown as SessionManager;
+	const ctx = {
+		session,
+		sessionManager,
+		settings: Settings.isolated(),
+		showStatus: (text: string) => {
+			output.push(text);
+		},
+		editor: { setText: () => {} },
+		refreshSlashCommandState: () => {},
+	} as unknown as InteractiveModeContext;
+	return {
+		output,
+		runtime: {
+			ctx,
+			handleBackgroundCommand: () => {},
 		},
 	};
 }
@@ -172,5 +207,45 @@ edges:
 			["build", "completed"],
 			["finish", "completed"],
 		]);
+	});
+
+	it("starts agent workflows through the TUI session task runner", async () => {
+		const dir = await createTempDir();
+		await Bun.write(
+			path.join(dir, "workflow.yml"),
+			`
+name: slash-agent-demo
+version: 1
+nodes:
+  build:
+    type: agent
+    agent: task
+    prompt: Implement the workflow feature.
+edges: []
+`,
+		);
+		const entries: CapturedEntry[] = [];
+		let requestedTask: unknown;
+		const runner: WorkflowAgentTaskRunner = async request => {
+			requestedTask = request.task;
+			return { exitCode: 0, output: "agent completed" };
+		};
+		const { output, runtime } = createTuiRuntime(entries, dir, runner);
+
+		const result = await executeBuiltinSlashCommand(`/workflow start ${dir} --run-id run-1`, runtime);
+
+		expect(result).toBe(true);
+		expect(requestedTask).toEqual({
+			id: "build",
+			description: "build",
+			assignment: "Implement the workflow feature.",
+		});
+		expect(output[0]).toContain("Workflow run: run-1");
+		expect(output[0]).toContain("Activations: 1 completed");
+		const runs = reconstructWorkflowRuns(entries);
+		expect(runs[0]?.activations[0]?.output).toEqual({
+			summary: "agent completed",
+			data: { exitCode: 0 },
+		});
 	});
 });

@@ -1721,7 +1721,11 @@ export async function executeBuiltinSlashCommand(
 			output: (text: string) => {
 				ctx.showStatus(text);
 			},
-			createWorkflowRuntimeHost: () => createSessionWorkflowRuntimeHost({ cwd: ctx.sessionManager.getCwd() }),
+			createWorkflowRuntimeHost: () =>
+				createSessionWorkflowRuntimeHost({
+					cwd: ctx.sessionManager.getCwd(),
+					runAgentTask: ctx.session.getWorkflowAgentTaskRunner(),
+				}),
 			refreshCommands: () => ctx.refreshSlashCommandState(),
 			reloadPlugins: async () => {
 				const projectPath = await resolveActiveProjectRegistryPath(ctx.sessionManager.getCwd());

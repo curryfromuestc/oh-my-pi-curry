@@ -162,6 +162,7 @@ import { queueResolveHandler } from "./tools/resolve";
 import { ttsTool } from "./tools/tts";
 import { EventBus } from "./utils/event-bus";
 import { buildNamedToolChoice } from "./utils/tool-choice";
+import { createTaskToolAgentRunner } from "./workflow/task-tool-runtime";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
 type AsyncResultEntry = {
@@ -2023,6 +2024,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			transformContext,
 			onPayload,
 			onResponse,
+			workflowAgentTaskRunner: createTaskToolAgentRunner(toolSession),
 			convertToLlm: convertToLlmFinal,
 			rebuildSystemPrompt,
 			reloadSshTool,

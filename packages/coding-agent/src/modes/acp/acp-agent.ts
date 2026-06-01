@@ -658,7 +658,10 @@ export class AcpAgent implements Agent {
 			cwd: record.session.sessionManager.getCwd(),
 			output: output => this.#emitCommandOutput(record, output),
 			createWorkflowRuntimeHost: () =>
-				createSessionWorkflowRuntimeHost({ cwd: record.session.sessionManager.getCwd() }),
+				createSessionWorkflowRuntimeHost({
+					cwd: record.session.sessionManager.getCwd(),
+					runAgentTask: record.session.getWorkflowAgentTaskRunner(),
+				}),
 			refreshCommands: () => this.#emitAvailableCommandsUpdate(record),
 			reloadPlugins: () => this.#reloadPluginState(record),
 			notifyTitleChanged: async () => {
