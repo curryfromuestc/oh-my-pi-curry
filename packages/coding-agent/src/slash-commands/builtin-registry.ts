@@ -121,10 +121,13 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "workflow",
-		description: "Inspect workflow runs",
-		acpDescription: "Inspect workflow runs",
-		acpInputHint: "inspect",
-		subcommands: [{ name: "inspect", description: "Show current workflow run summary" }],
+		description: "Start and inspect workflow runs",
+		acpDescription: "Start and inspect workflow runs",
+		acpInputHint: "inspect|start <path>",
+		subcommands: [
+			{ name: "inspect", description: "Show current workflow run summary" },
+			{ name: "start", description: "Start a workflow package", usage: "<path>" },
+		],
 		allowArgs: true,
 		handle: handleWorkflowAcp,
 	},

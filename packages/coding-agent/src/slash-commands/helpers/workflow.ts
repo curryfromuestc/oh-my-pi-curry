@@ -1,16 +1,34 @@
+import * as path from "node:path";
+import { Snowflake } from "@oh-my-pi/pi-utils";
+import { parseCommandArgs } from "../../utils/command-args";
 import { buildWorkflowInspection, type WorkflowInspection } from "../../workflow/inspection";
+import { loadWorkflowPackage } from "../../workflow/package-loader";
 import { reconstructWorkflowRuns } from "../../workflow/run-store";
+import { runWorkflow } from "../../workflow/runner";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 import { commandConsumed, parseSubcommand, usage } from "./parse";
+
+interface WorkflowStartArgs {
+	workflowPath: string;
+	runId?: string;
+	startNodeId?: string;
+}
 
 export async function handleWorkflowAcp(
 	command: ParsedSlashCommand,
 	runtime: SlashCommandRuntime,
 ): Promise<SlashCommandResult> {
-	const { verb } = parseSubcommand(command.args);
-	if (verb && verb !== "inspect") {
-		return usage("Usage: /workflow inspect", runtime);
+	const { verb, rest } = parseSubcommand(command.args);
+	if (!verb || verb === "inspect") {
+		return handleInspectCommand(runtime);
 	}
+	if (verb === "start") {
+		return handleStartCommand(rest, runtime);
+	}
+	return usage(workflowUsage(), runtime);
+}
+
+async function handleInspectCommand(runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
 	const runs = reconstructWorkflowRuns(runtime.sessionManager.getBranch());
 	const run = runs.at(-1);
 	if (!run) {
@@ -19,6 +37,80 @@ export async function handleWorkflowAcp(
 	}
 	await runtime.output(formatWorkflowInspection(buildWorkflowInspection(run)));
 	return commandConsumed();
+}
+
+async function handleStartCommand(rest: string, runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
+	const parsed = parseWorkflowStartArgs(rest);
+	if ("error" in parsed) {
+		return usage(parsed.error, runtime);
+	}
+	if (!runtime.createWorkflowRuntimeHost) {
+		return usage("Workflow start requires a workflow runtime host.", runtime);
+	}
+	const pkg = await loadWorkflowPackage(resolveWorkflowPath(parsed.workflowPath, runtime.cwd));
+	const startNodeId = parsed.startNodeId ?? pkg.definition.nodes[0]?.id;
+	if (!startNodeId) {
+		return usage("Workflow start requires a workflow with at least one node.", runtime);
+	}
+	const runId = parsed.runId ?? `workflow-${Snowflake.next()}`;
+	await runWorkflow({
+		host: runtime.sessionManager,
+		definition: pkg.definition,
+		runId,
+		startNodeId,
+		runtimeHost: await runtime.createWorkflowRuntimeHost(),
+	});
+	const run = reconstructWorkflowRuns(runtime.sessionManager.getBranch()).find(candidate => candidate.id === runId);
+	if (!run) {
+		await runtime.output(`Workflow run ${runId} started, but no run records were found.`);
+		return commandConsumed();
+	}
+	await runtime.output(formatWorkflowInspection(buildWorkflowInspection(run)));
+	return commandConsumed();
+}
+
+function parseWorkflowStartArgs(rest: string): WorkflowStartArgs | { error: string } {
+	const tokens = parseCommandArgs(rest);
+	let workflowPath: string | undefined;
+	let runId: string | undefined;
+	let startNodeId: string | undefined;
+	for (let index = 0; index < tokens.length; index += 1) {
+		const token = tokens[index];
+		if (token === undefined) continue;
+		if (token === "--run-id") {
+			const value = tokens[index + 1];
+			if (!value) return { error: workflowUsage() };
+			runId = value;
+			index += 1;
+			continue;
+		}
+		if (token === "--start") {
+			const value = tokens[index + 1];
+			if (!value) return { error: workflowUsage() };
+			startNodeId = value;
+			index += 1;
+			continue;
+		}
+		if (token.startsWith("--")) {
+			return { error: `Unknown workflow start option: ${token}\n${workflowUsage()}` };
+		}
+		if (workflowPath !== undefined) {
+			return { error: `Unexpected workflow start argument: ${token}\n${workflowUsage()}` };
+		}
+		workflowPath = token;
+	}
+	if (!workflowPath) {
+		return { error: workflowUsage() };
+	}
+	return { workflowPath, runId, startNodeId };
+}
+
+function resolveWorkflowPath(workflowPath: string, cwd: string): string {
+	return path.isAbsolute(workflowPath) ? workflowPath : path.resolve(cwd, workflowPath);
+}
+
+function workflowUsage(): string {
+	return "Usage: /workflow inspect\nUsage: /workflow start <path> [--run-id <id>] [--start <node-id>]";
 }
 
 function formatWorkflowInspection(inspection: WorkflowInspection): string {
