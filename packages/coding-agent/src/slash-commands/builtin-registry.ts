@@ -23,6 +23,7 @@ import { resolveMemoryBackend } from "../memory-backend";
 import type { InteractiveModeContext } from "../modes/types";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
 import { getChangelogPath, parseChangelog } from "../utils/changelog";
+import { createSessionWorkflowRuntimeHost } from "../workflow/session-runtime";
 import { buildContextReportText } from "./helpers/context-report";
 import { formatDuration } from "./helpers/format";
 import { createMarketplaceManager } from "./helpers/marketplace-manager";
@@ -1720,6 +1721,7 @@ export async function executeBuiltinSlashCommand(
 			output: (text: string) => {
 				ctx.showStatus(text);
 			},
+			createWorkflowRuntimeHost: () => createSessionWorkflowRuntimeHost({ cwd: ctx.sessionManager.getCwd() }),
 			refreshCommands: () => ctx.refreshSlashCommandState(),
 			reloadPlugins: async () => {
 				const projectPath = await resolveActiveProjectRegistryPath(ctx.sessionManager.getCwd());

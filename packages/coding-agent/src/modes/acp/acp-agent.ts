@@ -69,6 +69,7 @@ import {
 } from "../../session/session-manager";
 import { ACP_BUILTIN_SLASH_COMMANDS, executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { AUTO_THINKING, parseConfiguredThinkingLevel } from "../../thinking";
+import { createSessionWorkflowRuntimeHost } from "../../workflow/session-runtime";
 import { createAcpClientBridge } from "./acp-client-bridge";
 import {
 	buildToolCallStartUpdate,
@@ -656,6 +657,8 @@ export class AcpAgent implements Agent {
 			settings: record.session.settings,
 			cwd: record.session.sessionManager.getCwd(),
 			output: output => this.#emitCommandOutput(record, output),
+			createWorkflowRuntimeHost: () =>
+				createSessionWorkflowRuntimeHost({ cwd: record.session.sessionManager.getCwd() }),
 			refreshCommands: () => this.#emitAvailableCommandsUpdate(record),
 			reloadPlugins: () => this.#reloadPluginState(record),
 			notifyTitleChanged: async () => {
