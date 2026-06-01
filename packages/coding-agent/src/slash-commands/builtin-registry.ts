@@ -31,6 +31,7 @@ import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usag
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
+import { handleWorkflowAcp } from "./helpers/workflow";
 import { parseMarketplaceInstallArgs, parsePluginScopeArgs } from "./marketplace-install-parser";
 import type {
 	BuiltinSlashCommand,
@@ -117,6 +118,15 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			}
 			runtime.ctx.editor.setText("");
 		},
+	},
+	{
+		name: "workflow",
+		description: "Inspect workflow runs",
+		acpDescription: "Inspect workflow runs",
+		acpInputHint: "inspect",
+		subcommands: [{ name: "inspect", description: "Show current workflow run summary" }],
+		allowArgs: true,
+		handle: handleWorkflowAcp,
 	},
 	{
 		name: "loop",
