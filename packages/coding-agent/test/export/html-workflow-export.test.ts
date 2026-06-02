@@ -46,6 +46,14 @@ describe("HTML export workflow inspection support", () => {
 				nodeId: "build",
 				graphRevisionId: "graph-0",
 				parentActivationIds: [],
+				input: {
+					prompt: {
+						value: "Build the artifact.",
+						byteLength: 19,
+						contentHash: "sha256:export-prompt",
+						source: { kind: "inline", text: "Build the artifact." },
+					},
+				},
 			});
 			appendWorkflowActivationCompleted(sm, "run-export", {
 				activationId: "activation-1",
@@ -90,6 +98,12 @@ describe("HTML export workflow inspection support", () => {
 							graphRevisionId: "graph-0",
 							parentActivationIds: [],
 							status: "completed",
+							prompt: {
+								value: "Build the artifact.",
+								byteLength: 19,
+								contentHash: "sha256:export-prompt",
+								source: { kind: "inline", text: "Build the artifact." },
+							},
 							summary: "built package",
 							artifacts: ["artifact://build-log"],
 						},
