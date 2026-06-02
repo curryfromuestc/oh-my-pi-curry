@@ -459,6 +459,8 @@ function setModelRole(
 	operation: WorkflowSetModelRolePatchOperation,
 	preview: WorkflowGraphPatchPreview,
 ): void {
+	validateNonEmptyString(operation.role, "workflow graph patch model role");
+	validateNonEmptyString(operation.selector, "workflow graph patch model role selector");
 	const before = definition.models.roles[operation.role];
 	definition.models.roles[operation.role] = operation.selector;
 	preview.modelRoleChanges.push({ role: operation.role, before, after: operation.selector });

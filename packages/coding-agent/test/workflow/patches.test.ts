@@ -166,6 +166,35 @@ describe("workflow graph patch API", () => {
 		]);
 	});
 
+	it("updates model roles and rejects empty role patches", () => {
+		const definition = parseWorkflowDefinition(source, { sourcePath: "workflow.yml" });
+
+		const result = applyWorkflowGraphPatch(
+			definition,
+			[{ op: "set_model_role", role: "reviewer", selector: "provider/reviewer-v3:xhigh" }],
+			{ actor: "supervisor" },
+		);
+
+		expect(result.definition.models.roles.reviewer).toBe("provider/reviewer-v3:xhigh");
+		expect(result.preview.modelRoleChanges).toEqual([
+			{
+				role: "reviewer",
+				before: "provider/reviewer:high",
+				after: "provider/reviewer-v3:xhigh",
+			},
+		]);
+		expect(() =>
+			applyWorkflowGraphPatch(definition, [{ op: "set_model_role", role: "", selector: "provider/model" }], {
+				actor: "supervisor",
+			}),
+		).toThrow("workflow graph patch model role must be non-empty");
+		expect(() =>
+			applyWorkflowGraphPatch(definition, [{ op: "set_model_role", role: "reviewer", selector: "" }], {
+				actor: "supervisor",
+			}),
+		).toThrow("workflow graph patch model role selector must be non-empty");
+	});
+
 	it("validates patch references, model context, and edge conditions", () => {
 		const definition = parseWorkflowDefinition(source, { sourcePath: "workflow.yml" });
 
