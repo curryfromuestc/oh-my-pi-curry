@@ -1,6 +1,11 @@
 import type { WorkflowNodeType } from "./definition";
 import type { WorkflowResolvedPrompt } from "./prompt-source";
-import type { WorkflowActivationRecord, WorkflowRunSnapshot } from "./run-store";
+import type {
+	WorkflowActivationRecord,
+	WorkflowGraphPatchAppliedRecord,
+	WorkflowGraphPatchProposalRecord,
+	WorkflowRunSnapshot,
+} from "./run-store";
 
 export interface WorkflowInspection {
 	runId: string;
@@ -8,6 +13,8 @@ export interface WorkflowInspection {
 	graph: WorkflowInspectionGraph;
 	state: Record<string, unknown>;
 	graphRevisions: WorkflowInspectionGraphRevision[];
+	pendingGraphPatchProposals: WorkflowInspectionGraphPatchProposal[];
+	appliedGraphPatches: WorkflowInspectionGraphPatchApplication[];
 	activations: WorkflowInspectionActivation[];
 	modelAssignments: WorkflowInspectionModelAssignment[];
 }
@@ -32,6 +39,36 @@ export interface WorkflowInspectionGraphRevision {
 	id: string;
 	nodeCount: number;
 	edgeCount: number;
+}
+
+export interface WorkflowInspectionGraphPatchProposal {
+	id: string;
+	actor: WorkflowGraphPatchProposalRecord["actor"];
+	reason?: string;
+	impact: WorkflowInspectionGraphPatchImpact;
+}
+
+export interface WorkflowInspectionGraphPatchApplication {
+	proposalId?: string;
+	actor: WorkflowGraphPatchAppliedRecord["actor"];
+	reason?: string;
+	graphRevisionId: string;
+	parentGraphRevisionId?: string;
+	impact: WorkflowInspectionGraphPatchImpact;
+}
+
+export interface WorkflowInspectionGraphPatchImpact {
+	addedNodes: number;
+	removedNodes: number;
+	changedNodes: number;
+	addedEdges: number;
+	removedEdges: number;
+	changedEdges: number;
+	promptSourceChanges: number;
+	modelChanges: number;
+	permissionChanges: number;
+	modelRoleChanges: number;
+	warnings: number;
 }
 
 export interface WorkflowInspectionActivation {
@@ -73,6 +110,25 @@ export function buildWorkflowInspection(run: WorkflowRunSnapshot): WorkflowInspe
 			nodeCount: revision.definition.nodes.length,
 			edgeCount: revision.definition.edges.length,
 		})),
+		pendingGraphPatchProposals: pendingGraphPatchProposals(run).map(proposal => ({
+			id: proposal.id,
+			actor: proposal.actor,
+			reason: proposal.reason,
+			impact: compactPatchImpact(proposal.preview),
+		})),
+		appliedGraphPatches: run.appliedGraphPatches.map(patch => {
+			const inspectionPatch: WorkflowInspectionGraphPatchApplication = {
+				actor: patch.actor,
+				graphRevisionId: patch.graphRevisionId,
+				impact: compactPatchImpact(patch.preview),
+			};
+			if (patch.proposalId !== undefined) inspectionPatch.proposalId = patch.proposalId;
+			if (patch.reason !== undefined) inspectionPatch.reason = patch.reason;
+			if (patch.parentGraphRevisionId !== undefined) {
+				inspectionPatch.parentGraphRevisionId = patch.parentGraphRevisionId;
+			}
+			return inspectionPatch;
+		}),
 		activations: run.activations.map(activation => ({
 			id: activation.id,
 			nodeId: activation.nodeId,
@@ -109,4 +165,27 @@ function compactEdge(from: string, to: string, condition: string | undefined): W
 	const edge: WorkflowInspectionEdge = { from, to };
 	if (condition !== undefined) edge.condition = condition;
 	return edge;
+}
+
+function pendingGraphPatchProposals(run: WorkflowRunSnapshot): WorkflowGraphPatchProposalRecord[] {
+	const appliedProposalIds = new Set(
+		run.appliedGraphPatches.flatMap(patch => (patch.proposalId === undefined ? [] : [patch.proposalId])),
+	);
+	return run.graphPatchProposals.filter(proposal => !appliedProposalIds.has(proposal.id));
+}
+
+function compactPatchImpact(preview: WorkflowGraphPatchProposalRecord["preview"]): WorkflowInspectionGraphPatchImpact {
+	return {
+		addedNodes: preview.addedNodes.length,
+		removedNodes: preview.removedNodes.length,
+		changedNodes: preview.changedNodes.length,
+		addedEdges: preview.addedEdges.length,
+		removedEdges: preview.removedEdges.length,
+		changedEdges: preview.changedEdges.length,
+		promptSourceChanges: preview.promptSourceChanges.length,
+		modelChanges: preview.modelChanges.length,
+		permissionChanges: preview.permissionChanges.length,
+		modelRoleChanges: preview.modelRoleChanges.length,
+		warnings: preview.warnings.length,
+	};
 }

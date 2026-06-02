@@ -13,6 +13,8 @@ import type { WorkflowNodeRuntimeHost } from "../../src/workflow/node-runtime";
 import {
 	appendWorkflowActivationCompleted,
 	appendWorkflowActivationStarted,
+	appendWorkflowGraphPatchApplied,
+	appendWorkflowGraphPatchProposed,
 	reconstructWorkflowRuns,
 	startWorkflowRun,
 	type WorkflowRunStoreHost,
@@ -110,6 +112,22 @@ function createTuiRuntime(entries: CapturedEntry[], cwd: string, runner: Workflo
 	};
 }
 
+function graphPatchPreview() {
+	return {
+		addedNodes: ["scoreboard"],
+		removedNodes: [],
+		changedNodes: ["review"],
+		addedEdges: [{ from: "review", to: "scoreboard" }],
+		removedEdges: [],
+		changedEdges: [],
+		promptSourceChanges: [],
+		modelChanges: [],
+		permissionChanges: [],
+		modelRoleChanges: [],
+		warnings: [],
+	};
+}
+
 describe("/workflow slash command", () => {
 	it("reports when the current session has no workflow runs", async () => {
 		const { output, runtime } = createRuntime([]);
@@ -167,6 +185,66 @@ edges:
 		expect(output[0]).toContain("Activations: 1 completed");
 		expect(output[0]).toContain("activation-1 build completed - built");
 		expect(output[0]).toContain("activation-1 build openai/gpt-4o (workflow-default)");
+	});
+
+	it("prints graph patch audit summaries for workflow inspection", async () => {
+		const host = createHost();
+		const definition = parseWorkflowDefinition(
+			`
+name: slash-patch-demo
+version: 1
+nodes:
+  build:
+    type: agent
+  review:
+    type: review
+edges:
+  - from: build
+    to: review
+`,
+			{ sourcePath: "workflow.yml" },
+		);
+		const run = startWorkflowRun(host, definition, { runId: "run-1" });
+		const pendingPatch = [{ op: "add_node" as const, node: { id: "human-review", type: "human" as const } }];
+		const appliedPatch = [{ op: "add_node" as const, node: { id: "scoreboard", type: "script" as const } }];
+		const preview = graphPatchPreview();
+		appendWorkflowGraphPatchProposed(host, run.id, {
+			proposalId: "proposal-pending",
+			actor: "agent",
+			patch: pendingPatch,
+			preview,
+			reason: "request human gate",
+		});
+		appendWorkflowGraphPatchProposed(host, run.id, {
+			proposalId: "proposal-applied",
+			actor: "agent",
+			patch: appliedPatch,
+			preview,
+			reason: "request scoreboard",
+		});
+		appendWorkflowGraphPatchApplied(host, run.id, {
+			proposalId: "proposal-applied",
+			actor: "supervisor",
+			patch: appliedPatch,
+			preview,
+			graphRevisionId: "run-1:graph-1",
+			parentGraphRevisionId: run.currentGraphRevisionId,
+			reason: "approved scoreboard",
+		});
+		const { output, runtime } = createRuntime(host.entries);
+
+		const result = await executeAcpBuiltinSlashCommand("/workflow inspect", runtime);
+
+		expect(result).toEqual({ consumed: true });
+		expect(output[0]).toContain("Graph patches: 1 pending, 1 applied");
+		expect(output[0]).toContain("Pending graph patch proposals:");
+		expect(output[0]).toContain(
+			"- proposal-pending agent - request human gate (1 added node, 1 changed node, 1 added edge)",
+		);
+		expect(output[0]).toContain("Applied graph patches:");
+		expect(output[0]).toContain(
+			"- run-1:graph-1 supervisor from proposal-applied - approved scoreboard (1 added node, 1 changed node, 1 added edge)",
+		);
 	});
 
 	it("starts a workflow package through an injected runtime host", async () => {

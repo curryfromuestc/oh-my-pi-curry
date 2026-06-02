@@ -125,6 +125,28 @@ function formatWorkflowInspection(inspection: WorkflowInspection): string {
 		`State keys: ${Object.keys(inspection.state).join(", ") || "none"}`,
 		`Activations: ${formatActivationCounts({ completed, failed, running })}`,
 	];
+	if (inspection.pendingGraphPatchProposals.length > 0 || inspection.appliedGraphPatches.length > 0) {
+		lines.push(
+			`Graph patches: ${inspection.pendingGraphPatchProposals.length} pending, ${inspection.appliedGraphPatches.length} applied`,
+		);
+	}
+	if (inspection.pendingGraphPatchProposals.length > 0) {
+		lines.push("Pending graph patch proposals:");
+		for (const proposal of inspection.pendingGraphPatchProposals) {
+			lines.push(
+				`- ${proposal.id} ${proposal.actor}${formatReason(proposal.reason)} (${formatPatchImpact(proposal.impact)})`,
+			);
+		}
+	}
+	if (inspection.appliedGraphPatches.length > 0) {
+		lines.push("Applied graph patches:");
+		for (const patch of inspection.appliedGraphPatches) {
+			const proposal = patch.proposalId === undefined ? "" : ` from ${patch.proposalId}`;
+			lines.push(
+				`- ${patch.graphRevisionId} ${patch.actor}${proposal}${formatReason(patch.reason)} (${formatPatchImpact(patch.impact)})`,
+			);
+		}
+	}
 	if (inspection.activations.length > 0) {
 		lines.push("Activation details:");
 		for (const activation of inspection.activations) {
@@ -140,6 +162,32 @@ function formatWorkflowInspection(inspection: WorkflowInspection): string {
 		}
 	}
 	return lines.join("\n");
+}
+
+function formatReason(reason: string | undefined): string {
+	return reason === undefined ? "" : ` - ${reason}`;
+}
+
+function formatPatchImpact(impact: WorkflowInspection["pendingGraphPatchProposals"][number]["impact"]): string {
+	const parts = [
+		formatImpactCount(impact.addedNodes, "added node"),
+		formatImpactCount(impact.removedNodes, "removed node"),
+		formatImpactCount(impact.changedNodes, "changed node"),
+		formatImpactCount(impact.addedEdges, "added edge"),
+		formatImpactCount(impact.removedEdges, "removed edge"),
+		formatImpactCount(impact.changedEdges, "changed edge"),
+		formatImpactCount(impact.promptSourceChanges, "prompt source change"),
+		formatImpactCount(impact.modelChanges, "model change"),
+		formatImpactCount(impact.permissionChanges, "permission change"),
+		formatImpactCount(impact.modelRoleChanges, "model role change"),
+		formatImpactCount(impact.warnings, "warning"),
+	].filter(part => part !== undefined);
+	return parts.length > 0 ? parts.join(", ") : "no graph changes";
+}
+
+function formatImpactCount(count: number, label: string): string | undefined {
+	if (count === 0) return undefined;
+	return `${count} ${plural(label, count)}`;
 }
 
 function formatActivationCounts(counts: { completed: number; failed: number; running: number }): string {
