@@ -96,7 +96,7 @@ async function executeAndPersistActivation(
 		});
 		started = true;
 		const nodeForExecution = resolvedPrompt ? { ...node, prompt: resolvedPrompt.value } : node;
-		const modelAudit = resolveModelAudit(options, node);
+		const modelAudit = nodeRequiresModel(node) ? resolveModelAudit(options, node) : undefined;
 		if (modelAudit?.error && nodeRequiresModel(node)) {
 			throw new WorkflowRunnerError(modelAudit.error);
 		}

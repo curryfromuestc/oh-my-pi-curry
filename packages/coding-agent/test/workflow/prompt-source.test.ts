@@ -94,6 +94,7 @@ edges:
 					node: "planner",
 					path: "/data/nextPrompt",
 					activation: "latest-completed",
+					activationId: "activation-1",
 				},
 			},
 		});

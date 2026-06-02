@@ -1,4 +1,5 @@
 import type { WorkflowNodeType } from "./definition";
+import type { WorkflowResolvedPrompt } from "./prompt-source";
 import type { WorkflowActivationRecord, WorkflowRunSnapshot } from "./run-store";
 
 export interface WorkflowInspection {
@@ -39,6 +40,7 @@ export interface WorkflowInspectionActivation {
 	graphRevisionId: string;
 	parentActivationIds: string[];
 	status: WorkflowActivationRecord["status"];
+	prompt?: WorkflowResolvedPrompt;
 	summary?: string;
 	artifacts?: string[];
 	error?: string;
@@ -77,6 +79,7 @@ export function buildWorkflowInspection(run: WorkflowRunSnapshot): WorkflowInspe
 			graphRevisionId: activation.graphRevisionId,
 			parentActivationIds: activation.parentActivationIds,
 			status: activation.status,
+			prompt: activation.input?.prompt,
 			summary: activation.output?.summary,
 			artifacts: activation.output?.artifacts,
 			error: activation.error,

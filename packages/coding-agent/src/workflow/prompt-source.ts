@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { WorkflowNode, WorkflowPromptSource } from "./definition";
+import type { WorkflowNode, WorkflowOutputPromptSource, WorkflowPromptSource } from "./definition";
 import type { WorkflowActivation } from "./scheduler";
 import { readWorkflowState } from "./state";
 
@@ -15,11 +15,17 @@ export interface WorkflowPromptResolutionContext {
 
 export interface WorkflowResolvedPrompt {
 	value: string;
-	source: WorkflowPromptSource;
+	source: WorkflowResolvedPromptSource;
 }
 
 export interface WorkflowActivationInputSnapshot {
 	prompt?: WorkflowResolvedPrompt;
+}
+
+export type WorkflowResolvedPromptSource = WorkflowPromptSource | WorkflowResolvedOutputPromptSource;
+
+export interface WorkflowResolvedOutputPromptSource extends WorkflowOutputPromptSource {
+	activationId: string;
 }
 
 export class WorkflowPromptSourceError extends Error {
@@ -56,24 +62,37 @@ export async function resolveWorkflowPrompt(
 			context,
 		);
 	}
-	return resolvedPrompt(node, source, readOutputPromptValue(node, source, context), source.path, context);
+	const activation = selectOutputPromptActivation(node, source, context);
+	return resolvedPrompt(
+		node,
+		{ ...source, activationId: activation.id },
+		readOutputPromptValue(node, source, activation),
+		source.path,
+		context,
+	);
 }
 
 function readOutputPromptValue(
 	node: WorkflowNode,
 	source: Extract<WorkflowPromptSource, { kind: "output" }>,
-	context: WorkflowPromptResolutionContext,
+	activation: WorkflowActivation,
 ): unknown {
-	const activation =
-		source.activation === "parent"
-			? selectParentActivation(node, source, context)
-			: selectLatestCompletedActivation(node, source, context);
 	if (!activation.output) {
 		throw new WorkflowPromptSourceError(
 			`workflow prompt source for node "${node.id}" references activation "${activation.id}" without output`,
 		);
 	}
 	return readPointer(activation.output as Record<string, unknown>, source.path);
+}
+
+function selectOutputPromptActivation(
+	node: WorkflowNode,
+	source: Extract<WorkflowPromptSource, { kind: "output" }>,
+	context: WorkflowPromptResolutionContext,
+): WorkflowActivation {
+	return source.activation === "parent"
+		? selectParentActivation(node, source, context)
+		: selectLatestCompletedActivation(node, source, context);
 }
 
 function selectParentActivation(
@@ -140,7 +159,7 @@ async function readPackagePromptFile(
 
 function resolvedPrompt(
 	node: WorkflowNode,
-	source: WorkflowPromptSource,
+	source: WorkflowResolvedPromptSource,
 	value: unknown,
 	label: string,
 	context: WorkflowPromptResolutionContext,
