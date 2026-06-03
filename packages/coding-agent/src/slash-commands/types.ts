@@ -2,6 +2,7 @@ import type { Settings } from "../config/settings";
 import type { InteractiveModeContext } from "../modes/types";
 import type { AgentSession } from "../session/agent-session";
 import type { SessionManager } from "../session/session-manager";
+import type { WorkflowNodeRuntimeHost } from "../workflow/node-runtime";
 
 /** Declarative subcommand definition for commands like /mcp. */
 export interface SubcommandDef {
@@ -63,6 +64,7 @@ export interface SlashCommandRuntime {
 	reloadPlugins: () => Promise<void>;
 	notifyTitleChanged?: () => Promise<void> | void;
 	notifyConfigChanged?: () => Promise<void> | void;
+	createWorkflowRuntimeHost?: () => Promise<WorkflowNodeRuntimeHost> | WorkflowNodeRuntimeHost;
 }
 
 /**

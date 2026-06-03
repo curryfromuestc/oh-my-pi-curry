@@ -3,6 +3,8 @@ import type { AgentState } from "@oh-my-pi/pi-agent-core";
 import { APP_NAME, isEnoent } from "@oh-my-pi/pi-utils";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import { type SessionEntry, type SessionHeader, SessionManager } from "../../session/session-manager";
+import { buildWorkflowInspection, type WorkflowInspection } from "../../workflow/inspection";
+import { reconstructWorkflowRuns } from "../../workflow/run-store";
 // Pre-generated template (created by scripts/generate-template.ts at publish time)
 import { TEMPLATE } from "./template.generated";
 
@@ -96,6 +98,7 @@ interface SessionData {
 	leafId: string | null;
 	systemPrompt?: string;
 	tools?: { name: string; description: string }[];
+	workflowInspections: WorkflowInspection[];
 }
 
 /** Generate HTML from bundled template with runtime substitutions. */
@@ -129,6 +132,7 @@ export async function exportSessionToHtml(
 		leafId: sm.getLeafId(),
 		systemPrompt: state?.systemPrompt.join("\n\n"),
 		tools: state?.tools?.map(t => ({ name: t.name, description: t.description })),
+		workflowInspections: buildWorkflowInspections(sm.getEntries()),
 	};
 
 	const html = await generateHtml(sessionData, opts.themeName);
@@ -154,6 +158,7 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 		header: sm.getHeader(),
 		entries: sm.getEntries(),
 		leafId: sm.getLeafId(),
+		workflowInspections: buildWorkflowInspections(sm.getEntries()),
 	};
 
 	const html = await generateHtml(sessionData, opts.themeName);
@@ -161,4 +166,8 @@ export async function exportFromFile(inputPath: string, options?: ExportOptions 
 
 	await Bun.write(outputPath, html);
 	return outputPath;
+}
+
+function buildWorkflowInspections(entries: SessionEntry[]): WorkflowInspection[] {
+	return reconstructWorkflowRuns(entries).map(run => buildWorkflowInspection(run));
 }

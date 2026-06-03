@@ -12,7 +12,7 @@
         bytes[i] = binary.charCodeAt(i);
       }
       const data = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-      const { header, entries, leafId: defaultLeafId, systemPrompt, tools } = data;
+      const { header, entries, leafId: defaultLeafId, systemPrompt, tools, workflowInspections = [] } = data;
 
       // ============================================================
       // URL PARAMETER HANDLING
@@ -1861,6 +1861,51 @@
 
       const globalStats = computeStats(entries);
 
+      function renderWorkflowOverview() {
+        if (!Array.isArray(workflowInspections) || workflowInspections.length === 0) return '';
+
+        const runsHtml = workflowInspections.map(run => {
+          const activations = Array.isArray(run.activations) ? run.activations : [];
+          const graphRevisions = Array.isArray(run.graphRevisions) ? run.graphRevisions : [];
+          const modelAssignments = Array.isArray(run.modelAssignments) ? run.modelAssignments : [];
+          const pendingPatches = Array.isArray(run.pendingGraphPatchProposals) ? run.pendingGraphPatchProposals : [];
+          const appliedPatches = Array.isArray(run.appliedGraphPatches) ? run.appliedGraphPatches : [];
+          const state = run.state && typeof run.state === 'object' && !Array.isArray(run.state) ? run.state : {};
+          const stateKeys = Object.keys(state);
+          const statusCounts = activations.reduce((counts, activation) => {
+            const status = activation && activation.status ? String(activation.status) : 'unknown';
+            counts[status] = (counts[status] || 0) + 1;
+            return counts;
+          }, {});
+          const statusText = Object.keys(statusCounts).sort().map(status => `${status}:${statusCounts[status]}`).join(' ');
+          const modelText = modelAssignments
+            .map(assignment => assignment && assignment.resolvedModel ? String(assignment.resolvedModel) : null)
+            .filter(Boolean)
+            .filter((model, index, list) => list.indexOf(model) === index)
+            .join(', ');
+          const latestActivation = activations[activations.length - 1];
+          const latestSummary = latestActivation && latestActivation.summary ? String(latestActivation.summary) : '';
+
+          return `<div class="workflow-run">
+            <div class="workflow-run-title">${escapeHtml(String(run.runId || 'unknown'))}</div>
+            <div class="workflow-grid">
+              <div><span class="workflow-label">Graph</span><span>${escapeHtml(String(run.currentGraphRevisionId || 'unknown'))}</span></div>
+              <div><span class="workflow-label">Revisions</span><span>${graphRevisions.length}</span></div>
+              <div><span class="workflow-label">Activations</span><span>${activations.length}${statusText ? ' ' + escapeHtml(statusText) : ''}</span></div>
+              <div><span class="workflow-label">State</span><span>${stateKeys.length ? escapeHtml(stateKeys.join(', ')) : 'empty'}</span></div>
+              <div><span class="workflow-label">Patches</span><span>${pendingPatches.length} pending, ${appliedPatches.length} applied</span></div>
+              <div><span class="workflow-label">Models</span><span>${modelText ? escapeHtml(modelText) : 'none'}</span></div>
+            </div>
+            ${latestSummary ? `<div class="workflow-summary">${escapeHtml(truncate(latestSummary, 160))}</div>` : ''}
+          </div>`;
+        }).join('');
+
+        return `<div class="workflow-overview">
+          <div class="workflow-overview-header">Workflow Runs</div>
+          ${runsHtml}
+        </div>`;
+      }
+
       function renderHeader() {
         const totalCost = globalStats.cost.input + globalStats.cost.output + globalStats.cost.cacheRead + globalStats.cost.cacheWrite;
 
@@ -1892,6 +1937,8 @@
               <div class="info-item"><span class="info-label">Cost:</span><span class="info-value">$${totalCost.toFixed(3)}</span></div>
             </div>
           </div>`;
+
+        html += renderWorkflowOverview();
 
         if (systemPrompt) {
           html += `<div class="system-prompt">

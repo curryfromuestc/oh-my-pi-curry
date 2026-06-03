@@ -23,6 +23,7 @@ import { resolveMemoryBackend } from "../memory-backend";
 import type { InteractiveModeContext } from "../modes/types";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
 import { getChangelogPath, parseChangelog } from "../utils/changelog";
+import { createSessionWorkflowRuntimeHost } from "../workflow/session-runtime";
 import { buildContextReportText } from "./helpers/context-report";
 import { formatDuration } from "./helpers/format";
 import { createMarketplaceManager } from "./helpers/marketplace-manager";
@@ -31,6 +32,7 @@ import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usag
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
+import { handleWorkflowAcp } from "./helpers/workflow";
 import { parseMarketplaceInstallArgs, parsePluginScopeArgs } from "./marketplace-install-parser";
 import type {
 	BuiltinSlashCommand,
@@ -117,6 +119,18 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			}
 			runtime.ctx.editor.setText("");
 		},
+	},
+	{
+		name: "workflow",
+		description: "Start and inspect workflow runs",
+		acpDescription: "Start and inspect workflow runs",
+		acpInputHint: "inspect|start <path>",
+		subcommands: [
+			{ name: "inspect", description: "Show current workflow run summary" },
+			{ name: "start", description: "Start a workflow package", usage: "<path>" },
+		],
+		allowArgs: true,
+		handle: handleWorkflowAcp,
 	},
 	{
 		name: "loop",
@@ -1707,6 +1721,13 @@ export async function executeBuiltinSlashCommand(
 			output: (text: string) => {
 				ctx.showStatus(text);
 			},
+			createWorkflowRuntimeHost: () =>
+				createSessionWorkflowRuntimeHost({
+					cwd: ctx.sessionManager.getCwd(),
+					runAgentTask: ctx.session.getWorkflowAgentTaskRunner(),
+					runEvalScript: ctx.session.getWorkflowScriptEvalRunner(),
+					runHumanInput: ctx.session.getWorkflowHumanInputRunner(),
+				}),
 			refreshCommands: () => ctx.refreshSlashCommandState(),
 			reloadPlugins: async () => {
 				const projectPath = await resolveActiveProjectRegistryPath(ctx.sessionManager.getCwd());

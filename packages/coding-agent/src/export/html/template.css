@@ -645,6 +645,58 @@
       margin-top: var(--line-height);
     }
 
+    /* Workflow overview */
+    .workflow-overview {
+      background: var(--customMessageBg);
+      padding: var(--line-height);
+      border-radius: 4px;
+      margin-bottom: var(--line-height);
+    }
+
+    .workflow-overview-header {
+      font-weight: bold;
+      color: var(--customMessageLabel);
+      margin-bottom: var(--line-height);
+    }
+
+    .workflow-run + .workflow-run {
+      margin-top: var(--line-height);
+      padding-top: var(--line-height);
+      border-top: 1px solid var(--dim);
+    }
+
+    .workflow-run-title {
+      color: var(--borderAccent);
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+
+    .workflow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 2px 12px;
+      font-size: 11px;
+    }
+
+    .workflow-grid > div {
+      min-width: 0;
+      color: var(--customMessageText);
+    }
+
+    .workflow-label {
+      color: var(--dim);
+      display: inline-block;
+      margin-right: 6px;
+      min-width: 70px;
+    }
+
+    .workflow-summary {
+      margin-top: 6px;
+      color: var(--customMessageText);
+      font-size: 11px;
+      word-break: break-word;
+    }
+
     .system-prompt.provider-prompt {
       border-left: 3px solid var(--warning);
     }

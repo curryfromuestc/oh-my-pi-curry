@@ -649,13 +649,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const agentModelOverrides = this.session.settings.get("task.agentModelOverrides");
 		const settingsModelOverride = agentModelOverrides[agentName];
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
-		const modelOverride = resolveAgentModelPatterns({
-			settingsOverride: settingsModelOverride,
-			agentModel: effectiveAgent.model,
-			settings: this.session.settings,
-			activeModelPattern: parentActiveModelPattern,
-			fallbackModelPattern: this.session.getModelString?.(),
-		});
+		const modelOverride =
+			params.modelOverride ??
+			resolveAgentModelPatterns({
+				settingsOverride: settingsModelOverride,
+				agentModel: effectiveAgent.model,
+				settings: this.session.settings,
+				activeModelPattern: parentActiveModelPattern,
+				fallbackModelPattern: this.session.getModelString?.(),
+			});
 		const thinkingLevelOverride = effectiveAgent.thinkingLevel;
 
 		// Output schema priority: task call > agent frontmatter > inherited parent session.

@@ -136,6 +136,7 @@ export interface TaskParams {
 	schema?: string;
 	tasks: TaskItem[];
 	isolated?: boolean;
+	modelOverride?: string | string[];
 }
 
 /** A code review finding reported by the reviewer agent */
