@@ -1,0 +1,222 @@
+name: Sync upstream
+
+# Periodically integrate upstream (can1357/oh-my-pi) and the workflow fork
+# (PolyArch/oh-my-humanize) into this fork.
+#
+# The job merges both into a throwaway branch, validates the result on linux
+# x64 (native build + typecheck + tests + smoke), and only then opens or
+# refreshes a PR into main. A merge conflict or a failed validation opens a
+# tracking issue instead, so a broken upstream never lands silently. The default
+# upstream ref is the newest v* tag (a release-gated checkpoint, not raw main);
+# a manual run may override it.
+
+on:
+   schedule:
+      - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+   workflow_dispatch:
+      inputs:
+         upstream_ref:
+            description: "Upstream ref to merge (blank = latest v* tag)"
+            type: string
+            default: ""
+
+concurrency:
+   group: sync-upstream
+   cancel-in-progress: false
+
+permissions:
+   contents: write
+   pull-requests: write
+   issues: write
+
+env:
+   SYNC_BRANCH: auto/sync
+   UPSTREAM_URL: https://github.com/can1357/oh-my-pi.git
+   HZ_URL: https://github.com/PolyArch/oh-my-humanize.git
+
+jobs:
+   sync:
+      runs-on: ubuntu-22.04
+      timeout-minutes: 45
+      steps:
+         - uses: actions/checkout@v4
+           with:
+              fetch-depth: 0
+
+         - name: Configure git identity
+           run: |
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+         - name: Fetch upstream and workflow fork
+           run: |
+              git remote add upstream "$UPSTREAM_URL" 2>/dev/null || git remote set-url upstream "$UPSTREAM_URL"
+              git remote add hz "$HZ_URL" 2>/dev/null || git remote set-url hz "$HZ_URL"
+              git fetch --tags --prune upstream
+              git fetch --prune hz
+
+         - name: Resolve refs to merge
+           id: refs
+           run: |
+              up="${{ inputs.upstream_ref }}"
+              if [ -z "$up" ]; then
+                 up=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+              fi
+              if [ -z "$up" ]; then
+                 echo "No upstream v* tag found" >&2
+                 exit 1
+              fi
+              echo "upstream=$up" >> "$GITHUB_OUTPUT"
+              echo "hz=$(git rev-parse --short hz/main)" >> "$GITHUB_OUTPUT"
+              echo "Merging upstream=$up and hz/main=$(git rev-parse --short hz/main)"
+
+         - name: Merge into sync branch
+           id: merge
+           run: |
+              git checkout -B "$SYNC_BRANCH" main
+              status=ok
+              conflict_ref=""
+              conflict_files=""
+              for ref in "${{ steps.refs.outputs.upstream }}" hz/main; do
+                 if ! git merge --no-edit "$ref"; then
+                    conflict_ref="$ref"
+                    conflict_files=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+                    git merge --abort || true
+                    status=conflict
+                    echo "Conflict merging $ref: $conflict_files"
+                    break
+                 fi
+              done
+              ahead=$(git rev-list --count main..HEAD)
+              proceed=false
+              if [ "$status" = ok ] && [ "$ahead" != 0 ]; then
+                 proceed=true
+              fi
+              {
+                 echo "status=$status"
+                 echo "conflict_ref=$conflict_ref"
+                 echo "conflict_files=$conflict_files"
+                 echo "ahead=$ahead"
+                 echo "proceed=$proceed"
+              } >> "$GITHUB_OUTPUT"
+
+         - name: Report merge conflict
+           if: steps.merge.outputs.status == 'conflict'
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: |
+              title="Sync blocked: merge conflict from upstream/hz"
+              body=$(cat <<EOF
+              Automated sync hit a merge conflict and was aborted.
+
+              - Conflicting ref: \`${{ steps.merge.outputs.conflict_ref }}\`
+              - Conflicting files: \`${{ steps.merge.outputs.conflict_files }}\`
+              - Upstream ref: \`${{ steps.refs.outputs.upstream }}\`
+              - hz/main: \`${{ steps.refs.outputs.hz }}\`
+              - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+              Resolve locally:
+              \`\`\`sh
+              git fetch upstream --tags && git fetch hz
+              git switch -c $SYNC_BRANCH main
+              git merge ${{ steps.merge.outputs.conflict_ref }}   # resolve, commit
+              git merge hz/main
+              \`\`\`
+              EOF
+              )
+              existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+              if [ -n "$existing" ]; then
+                 gh issue comment "$existing" --body "$body"
+              else
+                 gh issue create --title "$title" --body "$body" --label sync 2>/dev/null \
+                    || gh issue create --title "$title" --body "$body"
+              fi
+              exit 1
+
+         - name: Nothing to sync
+           if: steps.merge.outputs.status == 'ok' && steps.merge.outputs.proceed == 'false'
+           run: echo "Already up to date with upstream and hz; nothing to sync."
+
+         - name: Setup bun
+           if: steps.merge.outputs.proceed == 'true'
+           uses: oven-sh/setup-bun@v2
+           with:
+              bun-version: "1.3"
+
+         - name: Setup rust
+           if: steps.merge.outputs.proceed == 'true'
+           uses: dtolnay/rust-toolchain@nightly
+           with:
+              toolchain: nightly-2026-04-29
+
+         - name: Cache cargo
+           if: steps.merge.outputs.proceed == 'true'
+           uses: Swatinem/rust-cache@v2
+           with:
+              shared-key: sync-linux-x64
+
+         - name: Install system deps
+           if: steps.merge.outputs.proceed == 'true'
+           run: |
+              sudo apt-get update
+              sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep imagemagick
+              sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
+              sudo ln -sf /usr/bin/convert /usr/local/bin/magick
+
+         - name: Validate merged tree
+           id: validate
+           if: steps.merge.outputs.proceed == 'true'
+           run: |
+              bun install
+              # Keep the merged lockfile consistent in the PR.
+              if ! git diff --quiet bun.lock; then
+                 git add bun.lock
+                 git commit -m "chore: refresh lockfile after sync"
+              fi
+              bun run build:native
+              bun run ci:check:full
+              bun run test:ts
+              bun run ci:test:smoke
+
+         - name: Push sync branch and open PR
+           if: steps.merge.outputs.proceed == 'true'
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: |
+              git push --force origin "HEAD:refs/heads/$SYNC_BRANCH"
+              existing=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number')
+              if [ -z "$existing" ]; then
+                 gh pr create --base main --head "$SYNC_BRANCH" \
+                    --title "Sync upstream ${{ steps.refs.outputs.upstream }} + workflow" \
+                    --body "Automated integration of upstream \`${{ steps.refs.outputs.upstream }}\` and \`hz/main\` (${{ steps.refs.outputs.hz }}). Native build, typecheck, tests, and smoke passed in the sync run. Review and merge to publish." \
+                    --label sync 2>/dev/null \
+                    || gh pr create --base main --head "$SYNC_BRANCH" \
+                       --title "Sync upstream ${{ steps.refs.outputs.upstream }} + workflow" \
+                       --body "Automated integration of upstream \`${{ steps.refs.outputs.upstream }}\` and \`hz/main\` (${{ steps.refs.outputs.hz }}). Native build, typecheck, tests, and smoke passed in the sync run. Review and merge to publish."
+              else
+                 echo "PR #$existing already open for $SYNC_BRANCH; force-push refreshed it."
+              fi
+
+         - name: Report validation failure
+           if: failure() && steps.validate.outcome == 'failure'
+           env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           run: |
+              title="Sync blocked: validation failed after merge"
+              body=$(cat <<EOF
+              The merge was clean but build, typecheck, or tests failed.
+
+              - Upstream ref: \`${{ steps.refs.outputs.upstream }}\`
+              - hz/main: \`${{ steps.refs.outputs.hz }}\`
+              - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+              Upstream likely changed an API the workflow integration depends on. Reconcile the seams (sdk.ts, session/agent-session.ts, task, slash-commands) locally, then rerun this workflow.
+              EOF
+              )
+              existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+              if [ -n "$existing" ]; then
+                 gh issue comment "$existing" --body "$body"
+              else
+                 gh issue create --title "$title" --body "$body" --label sync 2>/dev/null \
+                    || gh issue create --title "$title" --body "$body"
+              fi
