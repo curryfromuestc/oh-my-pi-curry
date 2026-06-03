@@ -59,7 +59,7 @@ jobs:
            run: |
               up="${{ inputs.upstream_ref }}"
               if [ -z "$up" ]; then
-                 up=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+                 up=$(git for-each-ref --sort=-v:refname --count=1 --format='%(refname:short)' 'refs/tags/v*')
               fi
               if [ -z "$up" ]; then
                  echo "No upstream v* tag found" >&2
